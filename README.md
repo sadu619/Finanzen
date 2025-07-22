@@ -1,2 +1,2 @@
-# Finanzen
-Projekt Marketing-Costs
+# marketing-costs
+Marketing Costs Analysis Program
