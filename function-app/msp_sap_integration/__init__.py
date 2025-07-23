@@ -6,7 +6,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("🧪 HTTP trigger function - Debug mode")
 
     try:
-        # 🔍 DEBUG: Check if environment variable exists
+        # 🔍 DEBUG: Check if environment variable existsss
         db_password = os.getenv("DB_PASSWORD")
         logging.info(f"🔍 DB_PASSWORD exists: {db_password is not None}")
         logging.info(f"🔍 DB_PASSWORD length: {len(db_password) if db_password else 0}")
