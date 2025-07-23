@@ -17,7 +17,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=500
             )
         
-        # Only try import if password exists
+        # Only try import if password existss
         from . import msp_sap_integration_fixed
         
         # Call the main function
