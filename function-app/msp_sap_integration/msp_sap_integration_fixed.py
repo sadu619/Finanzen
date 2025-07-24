@@ -17,7 +17,7 @@ from urllib.parse import quote_plus
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("msp_sap_integration")
 
-# 🔄 UPDATED: Simple SQL Authentication Database connection parameters
+# 🔄 UPDATED: Simple SQL Authentication Database connection parameterss
 DB_SERVER = "sql-sap-prod-v2.database.windows.net"
 DB_NAME = "sap-integration-db-v2"
 DB_USER = "sqladmin"
