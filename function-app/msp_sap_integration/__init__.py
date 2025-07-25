@@ -3,41 +3,40 @@ import azure.functions as func
 import os
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info("🧪 Testing new SAP code import")
+    logging.info("🧪 Testing database connection with new SAP code")
     
     try:
-        # Test all dependencies first
+        # Test dependencies
         import pandas as pd
-        import numpy as np
         import pyodbc
         from sqlalchemy import create_engine
         logging.info("✅ Dependencies loaded!")
         
-        # Test import of your new SAP code
-        logging.info("🔍 Attempting to import msp_sap_integration_fixed...")
+        # Import new SAP code
         from . import msp_sap_integration_fixed
-        logging.info("✅ New SAP code import successful!")
+        logging.info("✅ New SAP code imported!")
         
-        # Test if main function exists
-        if hasattr(msp_sap_integration_fixed, 'main'):
-            logging.info("✅ main() function found in new code!")
+        # Test database connection with NEW code
+        logging.info("🔍 Testing database connection with new DatabaseManager...")
+        db_connection_works = msp_sap_integration_fixed.db_manager.test_connection()
+        
+        if db_connection_works:
+            logging.info("✅ NEW database connection successful!")
+            
+            return func.HttpResponse(
+                "✅ SUCCESS: New SAP code + Database connection both work!",
+                status_code=200
+            )
         else:
-            logging.warning("⚠️ main() function not found in new code")
+            logging.error("❌ NEW database connection failed")
+            return func.HttpResponse(
+                "❌ Database connection failed with new code",
+                status_code=500
+            )
         
-        return func.HttpResponse(
-            "✅ SUCCESS: New SAP code can be imported and is ready!",
-            status_code=200
-        )
-        
-    except ImportError as e:
-        logging.error(f"❌ Import failed: {str(e)}")
-        return func.HttpResponse(
-            f"❌ Import Error: {str(e)}",
-            status_code=500
-        )
     except Exception as e:
-        logging.error(f"❌ Other error: {str(e)}")
+        logging.error(f"❌ Error testing new database connection: {str(e)}")
         return func.HttpResponse(
-            f"❌ Error: {str(e)}",
+            f"❌ Database Test Error: {str(e)}",
             status_code=500
         )
