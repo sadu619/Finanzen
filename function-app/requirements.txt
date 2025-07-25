@@ -5,3 +5,5 @@ numpy
 openpyxl
 pyodbc
 sqlalchemy
+urllib3==2.0.4
+#new
