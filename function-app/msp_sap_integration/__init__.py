@@ -3,41 +3,25 @@ import azure.functions as func
 import os
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info("🧪 HTTP trigger function - Debug mode")
-
+    logging.info("🧪 Testing dependencies from requirements.txt")
+    
     try:
-        # 🔍 DEBUG: Check if environment variable existsss
-        db_password = os.getenv("DB_PASSWORD")
-        logging.info(f"🔍 DB_PASSWORD exists: {db_password is not None}")
-        logging.info(f"🔍 DB_PASSWORD length: {len(db_password) if db_password else 0}")
+        # Test neue imports
+        import pandas as pd
+        import numpy as np
+        import pyodbc
+        from sqlalchemy import create_engine
         
-        if not db_password:
-            return func.HttpResponse(
-                "❌ ERROR: DB_PASSWORD environment variable is not set!",
-                status_code=500
-            )
+        logging.info("✅ All dependencies loaded successfully!")
         
-        # Only try import if password existss
-        from . import msp_sap_integration_fixed
-        
-        # Call the main function
-        result = msp_sap_integration_fixed.main()
-        
-        # Return success message
         return func.HttpResponse(
-            f"✅ SUCCESS: Database connection established! Message: {result.get('message', '')}",
+            "✅ All dependencies work! Ready for extended processing.",
             status_code=200
         )
         
-    except ImportError as e:
-        logging.error(f"💥 Import failed: {str(e)}")
-        return func.HttpResponse(
-            f"❌ IMPORT ERROR: {str(e)}",
-            status_code=500
-        )
     except Exception as e:
-        logging.error(f"💥 Test failed: {str(e)}")
+        logging.error(f"❌ Dependency error: {str(e)}")
         return func.HttpResponse(
-            f"❌ ERROR: {str(e)}",
+            f"❌ Dependency Error: {str(e)}",
             status_code=500
         )
