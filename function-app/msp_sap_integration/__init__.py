@@ -3,25 +3,41 @@ import azure.functions as func
 import os
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info("🧪 Testing dependencies from requirements.txt")
+    logging.info("🧪 Testing new SAP code import")
     
     try:
-        # Test neue imports
+        # Test all dependencies first
         import pandas as pd
         import numpy as np
         import pyodbc
         from sqlalchemy import create_engine
+        logging.info("✅ Dependencies loaded!")
         
-        logging.info("✅ All dependencies loaded successfully!")
+        # Test import of your new SAP code
+        logging.info("🔍 Attempting to import msp_sap_integration_fixed...")
+        from . import msp_sap_integration_fixed
+        logging.info("✅ New SAP code import successful!")
+        
+        # Test if main function exists
+        if hasattr(msp_sap_integration_fixed, 'main'):
+            logging.info("✅ main() function found in new code!")
+        else:
+            logging.warning("⚠️ main() function not found in new code")
         
         return func.HttpResponse(
-            "✅ All dependencies work! Ready for extended processing.",
+            "✅ SUCCESS: New SAP code can be imported and is ready!",
             status_code=200
         )
         
-    except Exception as e:
-        logging.error(f"❌ Dependency error: {str(e)}")
+    except ImportError as e:
+        logging.error(f"❌ Import failed: {str(e)}")
         return func.HttpResponse(
-            f"❌ Dependency Error: {str(e)}",
+            f"❌ Import Error: {str(e)}",
+            status_code=500
+        )
+    except Exception as e:
+        logging.error(f"❌ Other error: {str(e)}")
+        return func.HttpResponse(
+            f"❌ Error: {str(e)}",
             status_code=500
         )
