@@ -3,40 +3,30 @@ import azure.functions as func
 import os
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info("🧪 Testing database connection with new SAP code")
+    logging.info("🚀 Running FULL SAP processing with extended fields!")
     
     try:
-        # Test dependencies
-        import pandas as pd
-        import pyodbc
-        from sqlalchemy import create_engine
-        logging.info("✅ Dependencies loaded!")
-        
         # Import new SAP code
         from . import msp_sap_integration_fixed
         logging.info("✅ New SAP code imported!")
         
-        # Test database connection with NEW code
-        logging.info("🔍 Testing database connection with new DatabaseManager...")
-        db_connection_works = msp_sap_integration_fixed.db_manager.test_connection()
+        # Run the complete processing with all extended SAP fields
+        logging.info("⚡ Starting complete SAP processing...")
+        result = msp_sap_integration_fixed.main()
         
-        if db_connection_works:
-            logging.info("✅ NEW database connection successful!")
-            
-            return func.HttpResponse(
-                "✅ SUCCESS: New SAP code + Database connection both work!",
-                status_code=200
-            )
-        else:
-            logging.error("❌ NEW database connection failed")
-            return func.HttpResponse(
-                "❌ Database connection failed with new code",
-                status_code=500
-            )
+        logging.info("🎉 SAP processing completed successfully!")
+        
+        return func.HttpResponse(
+            f"✅ SUCCESS: {result.get('message', 'Processing completed')} | "
+            f"Transactions: {result.get('details', {}).get('transactions_saved', 'N/A')} | "
+            f"Time: {result.get('processing_time', 'N/A'):.1f}s | "
+            f"Batch: {result.get('details', {}).get('batch_id', 'N/A')}",
+            status_code=200
+        )
         
     except Exception as e:
-        logging.error(f"❌ Error testing new database connection: {str(e)}")
+        logging.error(f"❌ SAP processing failed: {str(e)}")
         return func.HttpResponse(
-            f"❌ Database Test Error: {str(e)}",
+            f"❌ Processing Error: {str(e)}",
             status_code=500
         )
