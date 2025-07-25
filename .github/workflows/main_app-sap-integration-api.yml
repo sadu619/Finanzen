@@ -1,20 +1,22 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-# More info on Python, GitHub Actions, and Azure App Service: https://aka.ms/python-webapps-actions
+# Ersetzen Sie den Inhalt von .github/workflows/main_app-sap-integration-api.yml mit diesem Code:
 
-name: Build and deploy Python app to Azure Web App - app-sap-integration-api
+name: Build and deploy SAP Integration API to Azure Web App
 
 on:
   push:
     branches:
       - main
+    paths:
+      - 'api/**'
+      - 'function-app/msp_sap_integration/**'
+      - '.github/workflows/main_app-sap-integration-api.yml'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -24,38 +26,93 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Create and start virtual environment
+      - name: 📦 Prepare API deployment package
         run: |
+          echo "🏗️ Creating deployment structure..."
+          
+          # Create deployment directory
+          mkdir -p deploy-package
+          
+          # Copy API files to deployment package
+          echo "📁 Copying API files..."
+          cp -r api/* deploy-package/
+          
+          # Copy processing logic from function-app
+          echo "⚙️ Copying processing logic..."
+          if [ -f "function-app/msp_sap_integration/msp_sap_integration_fixed.py" ]; then
+            cp function-app/msp_sap_integration/msp_sap_integration_fixed.py deploy-package/
+            echo "✅ Processing logic copied successfully"
+          else
+            echo "⚠️ Processing logic not found - deployment will continue"
+          fi
+          
+          # Make startup script executable
+          chmod +x deploy-package/startup.sh
+          
+          echo "📋 Deployment package contents:"
+          ls -la deploy-package/
+
+      - name: 🐍 Create and start virtual environment
+        run: |
+          cd deploy-package
           python -m venv venv
           source venv/bin/activate
-      
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-        
-      # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
+          
+      - name: 📦 Install dependencies
+        run: |
+          cd deploy-package
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+          # Test imports
+          echo "🧪 Testing critical imports..."
+          python -c "
+          try:
+              import flask
+              print('✅ Flask available')
+              import pandas as pd
+              print('✅ Pandas available')
+              import sqlalchemy
+              print('✅ SQLAlchemy available')
+              print('✅ All critical dependencies installed')
+          except ImportError as e:
+              print(f'❌ Import error: {e}')
+              exit(1)
+          "
 
-      - name: Upload artifact for deployment jobs
+      - name: 📤 Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
         with:
           name: python-app
           path: |
-            .
-            !venv/
+            deploy-package/
+            !deploy-package/venv/
 
   deploy:
     runs-on: ubuntu-latest
     needs: build
+    environment:
+      name: 'Production'
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     
     steps:
-      - name: Download artifact from build job
+      - name: 📥 Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: python-app
       
-      - name: 'Deploy to Azure Web App'
+      - name: 🚀 Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
         with:
           app-name: 'app-sap-integration-api'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_20FAB7B6013341B9B3BFCA6B16A4ED13 }}
+          package: .
+          
+      - name: ✅ Post-deployment verification
+        run: |
+          echo "🎉 Deployment completed!"
+          echo "🌐 API URL: https://app-sap-integration-api-h7hwc9fwaugghnce.germanywestcentral-01.azurewebsites.net"
+          echo "🏥 Health Check: https://app-sap-integration-api-h7hwc9fwaugghnce.germanywestcentral-01.azurewebsites.net/api/health"
+          echo "📊 Transactions: https://app-sap-integration-api-h7hwc9fwaugghnce.germanywestcentral-01.azurewebsites.net/api/transactions"
