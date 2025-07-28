@@ -64,4 +64,6 @@ class SAPApiService {
   }
 }
 
-export default new SAPApiService();
+// ESLint-konforme Export
+const apiService = new SAPApiService();
+export default apiService;
