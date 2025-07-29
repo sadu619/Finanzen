@@ -1,32 +1,61 @@
-import logging
 import azure.functions as func
-import os
+import logging
+import json
+from datetime import datetime
+from .msp_sap_integration_fixed import main
 
-def main(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info("🚀 Running FULL SAP processing with extended fields!")
+def main_http(req: func.HttpRequest) -> func.HttpResponse:
+    """HTTP-triggered Azure Function für manuelles SAP Processing"""
+    
+    logging.info('🌐 HTTP triggered SAP processing started at: %s', datetime.now())
     
     try:
-        # Import new SAP code
-        from . import msp_sap_integration_fixed
-        logging.info("✅ New SAP code imported!")
+        result = main()
         
-        # Run the complete processing with all extended SAP fields
-        logging.info("⚡ Starting complete SAP processing...")
-        result = msp_sap_integration_fixed.main()
-        
-        logging.info("🎉 SAP processing completed successfully!")
+        if result.get('status') == 'success':
+            transactions_saved = result.get('details', {}).get('transactions_saved', 0)
+            
+            if transactions_saved > 0:
+                response_data = {
+                    "status": "success",
+                    "message": f"Processing completed - {transactions_saved} transactions processed",
+                    "data": result,
+                    "timestamp": datetime.now().isoformat()
+                }
+                logging.info(f'🎉 HTTP processing completed: {transactions_saved} transactions')
+            else:
+                response_data = {
+                    "status": "success", 
+                    "message": "No new transactions found - system is up to date",
+                    "data": result,
+                    "timestamp": datetime.now().isoformat()
+                }
+        else:
+            response_data = {
+                "status": "error",
+                "message": result.get("message", "Processing failed"),
+                "data": result,
+                "timestamp": datetime.now().isoformat()
+            }
         
         return func.HttpResponse(
-            f"✅ SUCCESS: {result.get('message', 'Processing completed')} | "
-            f"Transactions: {result.get('details', {}).get('transactions_saved', 'N/A')} | "
-            f"Time: {result.get('processing_time', 'N/A'):.1f}s | "
-            f"Batch: {result.get('details', {}).get('batch_id', 'N/A')}",
-            status_code=200
+            json.dumps(response_data, indent=2),
+            status_code=200 if result.get('status') == 'success' else 500,
+            headers={
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*"
+            }
         )
-        
+    
     except Exception as e:
-        logging.error(f"❌ SAP processing failed: {str(e)}")
+        error_response = {
+            "status": "error",
+            "message": f"Fatal error: {str(e)}",
+            "timestamp": datetime.now().isoformat()
+        }
+        
         return func.HttpResponse(
-            f"❌ Processing Error: {str(e)}",
-            status_code=500
+            json.dumps(error_response, indent=2),
+            status_code=500,
+            headers={"Content-Type": "application/json"}
         )

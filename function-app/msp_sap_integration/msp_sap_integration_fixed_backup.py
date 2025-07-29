@@ -5,13 +5,11 @@ from datetime import datetime
 import logging
 import concurrent.futures
 import functools
-import hashlib
 from typing import Dict, List, Any, Optional, Tuple
 import time
 import pyodbc
 from sqlalchemy import create_engine, text
 from urllib.parse import quote_plus
-
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -114,34 +112,6 @@ def safe_string_conversion(value):
         return None
     
     return str_value
-
-def safe_date_conversion(value):
-    """Safely convert a date/datetime object to string"""
-    if pd.isna(value) or value is None:
-        return ''
-    
-    # Wenn es bereits ein String ist
-    if isinstance(value, str):
-        return value.strip()
-    
-    # Wenn es ein datetime oder date Objekt ist
-    if hasattr(value, 'strftime'):
-        return value.strftime('%Y-%m-%d')
-    
-    # Fallback: als String konvertieren
-    return str(value).strip()
-
-def create_transaction_fingerprint(transaction) -> str:
-    """Erstellt eindeutigen Fingerprint für SAP-Transaktion"""
-    key_fields = [
-        str(safe_get(transaction, 'Belegnummer', '')).strip(),
-        str(safe_get(transaction, 'Kostenstelle', '')).strip(),
-        str(safe_float_conversion(safe_get(transaction, 'Betrag in Hauswährung', 0))),
-        safe_date_conversion(safe_get(transaction, 'Buchungsdatum', '')),  # ✅ GEÄNDERT
-        str(safe_get(transaction, 'Hauptbuchkonto', '')).strip()
-    ]
-    fingerprint_string = '|'.join(key_fields)
-    return hashlib.md5(fingerprint_string.encode('utf-8')).hexdigest()
 
 # =============================================================================
 # DATABASE MANAGER
@@ -248,53 +218,6 @@ class DatabaseManager:
             logger.error(f"❌ Error reading {table_name}: {str(e)}")
             raise
 
-    def get_processed_transaction_fingerprints(self) -> set:
-        """Holt alle bereits verarbeiteten Transaction-Fingerprints"""
-        try:
-            query = text("""
-                SELECT DISTINCT transaction_fingerprint 
-                FROM sap_transactions_processed 
-                WHERE transaction_fingerprint IS NOT NULL
-            """)
-            
-            with self.engine.connect() as conn:
-                result = conn.execute(query).fetchall()
-                fingerprints = {row[0] for row in result if row[0]}
-                logger.info(f"📋 Found {len(fingerprints)} already processed fingerprints")
-                return fingerprints
-                
-        except Exception as e:
-            logger.error(f"Error getting processed fingerprints: {str(e)}")
-            return set()
-
-    def get_unprocessed_sap_transactions(self) -> pd.DataFrame:
-        """Holt nur unverarbeitete SAP-Transaktionen"""
-        try:
-            # Bereits verarbeitete Fingerprints holen
-            processed_fingerprints = self.get_processed_transaction_fingerprints()
-            
-            # Neueste Rohdaten laden
-            latest_batch = self.get_latest_batch_id("sap_transactions", "TEST_BATCH_%")
-            if not latest_batch:
-                raise ValueError("No SAP data found in database")
-            
-            # Raw data mit Mapping laden
-            df = self.read_table_as_dataframe("sap_transactions", latest_batch, SAP_COLUMN_MAPPING)
-            
-            # Fingerprints erstellen
-            df['transaction_fingerprint'] = df.apply(
-                lambda row: create_transaction_fingerprint(row), axis=1
-            )
-            
-            # Nur unverarbeitete filtern
-            unprocessed_df = df[~df['transaction_fingerprint'].isin(processed_fingerprints)].copy()
-            
-            logger.info(f"✅ Found {len(df)} total, {len(unprocessed_df)} unprocessed transactions")
-            return unprocessed_df.reset_index(drop=True)
-            
-        except Exception as e:
-            logger.error(f"❌ Error getting unprocessed transactions: {str(e)}")
-            raise
 # Initialize database manager
 db_manager = DatabaseManager()
 
@@ -395,28 +318,42 @@ kostenstelle_cache = Cache(CACHE_EXPIRY)
 # DATA LOADING FUNCTIONS
 # =============================================================================
 
-# Diese Funktion ersetzen:
 def read_from_database(table_type: str) -> pd.DataFrame:
     """Read data from database tables based on table type"""
     logger.info(f"Reading {table_type} data from database...")
     
     if table_type == "sap":
-        # GEÄNDERT: Incremental loading
-        df = db_manager.get_unprocessed_sap_transactions()
+        latest_batch = db_manager.get_latest_batch_id("sap_transactions", "TEST_BATCH_%")
+        if not latest_batch:
+            raise ValueError("No SAP data found in database")
+        
+        df = db_manager.read_table_as_dataframe(
+            "sap_transactions", 
+            latest_batch, 
+            SAP_COLUMN_MAPPING
+        )
         
     elif table_type == "mapping_floor":
-        # UNVERÄNDERT
         latest_batch = db_manager.get_latest_batch_id("kostenstelle_mapping_floor", "TEST_BATCH_%")
         if not latest_batch:
             raise ValueError("No Floor mapping data found in database")
-        df = db_manager.read_table_as_dataframe("kostenstelle_mapping_floor", latest_batch, FLOOR_MAPPING_COLUMNS)
+        
+        df = db_manager.read_table_as_dataframe(
+            "kostenstelle_mapping_floor",
+            latest_batch,
+            FLOOR_MAPPING_COLUMNS
+        )
         
     elif table_type == "mapping_hq":
-        # UNVERÄNDERT
         latest_batch = db_manager.get_latest_batch_id("kostenstelle_mapping_hq", "TEST_BATCH_%")
         if not latest_batch:
             raise ValueError("No HQ mapping data found in database")
-        df = db_manager.read_table_as_dataframe("kostenstelle_mapping_hq", latest_batch, HQ_MAPPING_COLUMNS)
+        
+        df = db_manager.read_table_as_dataframe(
+            "kostenstelle_mapping_hq",
+            latest_batch,
+            HQ_MAPPING_COLUMNS
+        )
         
     else:
         raise ValueError(f"Unknown table type: {table_type}")
@@ -544,8 +481,6 @@ def process_sap_transactions_extended_fixed(sap_data: pd.DataFrame, mapping_inde
             'text_description': safe_string_conversion(safe_get(transaction, 'Text', '')),
             'booking_date': safe_string_conversion(safe_get(transaction, 'Buchungsdatum', '')),
             
-            'transaction_fingerprint': safe_get(transaction, 'transaction_fingerprint', ''),
-
             # Extended SAP fields
             'buchungskreis': safe_string_conversion(safe_get(transaction, 'Buchungskreis', '')),
             'hauptbuchkonto': safe_string_conversion(safe_get(transaction, 'Hauptbuchkonto', '')),
@@ -626,8 +561,6 @@ def save_transactions_final(direct_costs, outliers, batch_id, processing_date):
                         'status': str(tx.get('status', 'Unknown')),
                         'batch_id': str(batch_id),
                         'processing_date': processing_date,
-
-                        'transaction_fingerprint': tx.get('transaction_fingerprint'),
                         
                         # Extended SAP fields
                         'konto_gegenbuchung': str(tx.get('konto_gegenbuchung', '')) if tx.get('konto_gegenbuchung') else None,
@@ -658,14 +591,14 @@ def save_transactions_final(direct_costs, outliers, batch_id, processing_date):
                         INSERT INTO sap_transactions_processed (
                             transaction_id, amount, kostenstelle, text_description, booking_date,
                             department, region, district, location_type, category, status,
-                            batch_id, processing_date, transaction_fingerprint,
+                            batch_id, processing_date,
                             konto_gegenbuchung, material, soll_haben_kennz, hauptbuchkonto, buchungsschluessel,
                             belegdatum, geschaeftsbereich, einkaufsbeleg, psp_element, auftrag,
                             steuerkennzeichen, buchungskreis, ausgleichsbeleg, geschaeftsjahr, buchungsperiode, belegart
                         ) VALUES (
                             :transaction_id, :amount, :kostenstelle, :text_description, :booking_date,
                             :department, :region, :district, :location_type, :category, :status,
-                            :batch_id, :processing_date, :transaction_fingerprint,
+                            :batch_id, :processing_date,
                             :konto_gegenbuchung, :material, :soll_haben_kennz, :hauptbuchkonto, :buchungsschluessel,
                             :belegdatum, :geschaeftsbereich, :einkaufsbeleg, :psp_element, :auftrag,
                             :steuerkennzeichen, :buchungskreis, :ausgleichsbeleg, :geschaeftsjahr, :buchungsperiode, :belegart
@@ -713,20 +646,6 @@ def main_final():
         # Step 1: Load data
         logger.info("📊 Loading SAP data from database...")
         sap_data = read_from_database("sap")
-
-        if len(sap_data) == 0:
-            logger.info("✅ No new transactions to process - system is up to date!")
-            return {
-                 "status": "success",
-                 "message": "No new transactions found - all up to date",
-                 "transactions_saved": 0,
-                 "batch_id": None,
-                 "processing_time": time.time() - start_time
-             }
-
-        logger.info(f"✅ Found {len(sap_data)} NEW SAP transactions to process")
-
-
         mapping_floor = read_from_database("mapping_floor")
         mapping_hq = read_from_database("mapping_hq")
         
