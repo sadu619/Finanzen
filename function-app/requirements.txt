@@ -1,22 +1,22 @@
-# Azure Functions Core (modernized)
-azure-functions>=1.18.0
-azure-functions-worker>=1.0.0
+# Azure Functions 
+azure-functions
 
-# Database connectivity
-pyodbc>=4.0.39
-sqlalchemy>=1.4.46
+# Database connectivity (Ihre Processing Function braucht das!)
+pyodbc
+sqlalchemy
 
-# Data processing
-pandas>=1.5.3
-numpy>=1.24.3
+# Data processing (Ihre Processing Function braucht das!)
+pandas
+numpy
 
 # HTTP and JSON handling
-requests>=2.31.0
+requests
 
-# Utilities
-python-dateutil>=2.8.2
-urllib3>=1.26.18
+# Utilities (Ihre Processing Function nutzt das!)
+python-dateutil
 
-# Additional dependencies for your project
-azure-storage-blob
+# Excel support (falls Sie das nutzen)
 openpyxl
+
+# Additional - falls Sie Blob Storage nutzen
+azure-storage-blob
