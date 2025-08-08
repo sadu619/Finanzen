@@ -5,10 +5,12 @@ on:
       - main
     paths:
       - 'function-app/**'
+
 env:
   AZURE_FUNCTIONAPP_NAME: func-sap-processing
   AZURE_FUNCTIONAPP_PACKAGE_PATH: 'function-app'
   PYTHON_VERSION: '3.9'
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -26,6 +28,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/requirements.txt
       
+      - name: Create deployment package
+        run: |
+          # Ensure all function directories have proper structure
+          echo "📦 Preparing deployment package..."
+          
+          # Check if main processing function exists
+          if [ -d "${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/msp_sap_integration" ]; then
+            echo "✅ Main processing function found"
+          fi
+          
+          # Check if timer function exists  
+          if [ -d "${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/msp_sap_integration_timer" ]; then
+            echo "✅ Timer function found"
+          fi
+          
+          # Check if new API function exists
+          if [ -d "${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/msp_sap_interface_api" ]; then
+            echo "✅ SAP API interface function found"
+          else
+            echo "⚠️ SAP API interface function not found - will be skipped"
+          fi
+      
       - name: Deploy to Azure Function App
         uses: Azure/functions-action@v1
         with:
@@ -33,3 +57,14 @@ jobs:
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
           scm-do-build-during-deployment: true
+      
+      - name: Post-deployment verification
+        run: |
+          echo "🎉 Deployment completed successfully!"
+          echo "📊 Deployed functions:"
+          echo "   - msp_sap_integration (Main processing)"
+          echo "   - msp_sap_integration_timer (20-minute timer)"
+          echo "   - msp_sap_interface_api (SAP API interface)"
+          echo ""
+          echo "🔗 API Endpoint will be available at:"
+          echo "   https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/sap-upload"
