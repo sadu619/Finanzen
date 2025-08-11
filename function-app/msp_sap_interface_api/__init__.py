@@ -141,6 +141,8 @@ def save_transactions_to_db(transactions: List[Dict[str, Any]], batch_id: str, t
                 
             except Exception as row_error:
                 logger.warning(f"⚠️ Skipped invalid transaction: {str(row_error)}")
+                logger.warning(f"🔍 Transaction data: {cleaned_tx}")
+                logger.warning(f"🔍 Values being inserted: {values}")
                 continue
         
         # Commit all transactions
