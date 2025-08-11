@@ -97,9 +97,9 @@ def save_transactions_to_db(transactions: List[Dict[str, Any]], batch_id: str, t
                 belegnummer, buchungsdatum, belegdatum, text_field, soll_haben_kennz,
                 buchungsschluessel, betrag_in_hauswaehrung, kostenstelle, auftrag, psp_element,
                 einkaufsbeleg, steuerkennzeichen, geschaeftsbereich, ausgleichsbeleg,
-                konto_gegenbuchung, material, batch_id, upload_date, source_system
+                konto_gegenbuchung, material, batch_id, upload_date
             ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
         """
         
@@ -133,7 +133,6 @@ def save_transactions_to_db(transactions: List[Dict[str, Any]], batch_id: str, t
                     cleaned_tx.get('material'),
                     batch_id,
                     upload_date,
-                    f'SAP_API_{transaction_type}'
                 )
                 
                 cursor.execute(insert_query, values)
