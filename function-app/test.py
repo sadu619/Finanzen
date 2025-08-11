@@ -23,11 +23,15 @@ test_data = {
     ]
 }
 
+# API-Key aus Environment Variable holen
+import os
+API_KEY = os.getenv("API_KEY", "IHREN_KEY_HIER_EINTRAGEN")
+
 response = requests.post(
     "https://func-sap-processing-ffd6h6ghdkf0f0dw.germanywestcentral-01.azurewebsites.net/api/sap-upload",
     json=test_data,
     headers={
-        "x-functions-key": "67hPNq3PH9smbTza07A8CGoyDFabsB2KGvtlIpYscARGAzFuc2dv-w==",
+        "x-functions-key": API_KEY,  # ← Jetzt sicher!
         "Content-Type": "application/json"
     }
 )

@@ -134,3 +134,8 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# In der Wurzel Ihres Projekts
+echo "test.py" >> .gitignore
+echo "*.local.py" >> .gitignore
+echo ".env" >> .gitignore
