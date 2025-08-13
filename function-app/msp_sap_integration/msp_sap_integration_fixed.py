@@ -280,12 +280,13 @@ class DatabaseManager:
             
             query = """
             SELECT * FROM sap_transactions 
-            WHERE upload_date >= DATEADD(day, -?, GETDATE())
+            WHERE upload_date >= DATEADD(day, -90, GETDATE())
             ORDER BY upload_date DESC
             """
             
             logger.info(f"📊 Loading transactions from last {recent_days} days...")
-            df = pd.read_sql_query(query, self.engine, params=[recent_days])
+
+            df = pd.read_sql_query(query, self.engine)
             
             # Apply column mapping
             df = df.rename(columns=SAP_COLUMN_MAPPING)
@@ -330,12 +331,12 @@ class DatabaseManager:
             
             while offset < total_count:
                 # Load chunk
-                chunk_query = """
+                chunk_query = text("""
                 SELECT * FROM sap_transactions 
                 WHERE upload_date >= DATEADD(day, -90, GETDATE())
                 ORDER BY upload_date DESC
-                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-                """
+                OFFSET :offset ROWS FETCH NEXT :chunk_size ROWS ONLY
+                """)
                 
                 chunk_df = pd.read_sql_query(chunk_query, self.engine, params=[offset, chunk_size])
                 
