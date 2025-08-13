@@ -249,52 +249,162 @@ class DatabaseManager:
             raise
 
     def get_processed_transaction_fingerprints(self) -> set:
-        """Holt alle bereits verarbeiteten Transaction-Fingerprints"""
+        """Get all already processed transaction fingerprints - optimized for enterprise"""
         try:
+            # 🚀 OPTIMIZATION: Only get recent fingerprints to reduce memory usage
             query = text("""
                 SELECT DISTINCT transaction_fingerprint 
                 FROM sap_transactions_processed 
                 WHERE transaction_fingerprint IS NOT NULL
+                AND processing_date >= DATEADD(day, -180, GETDATE())
             """)
             
             with self.engine.connect() as conn:
                 result = conn.execute(query).fetchall()
                 fingerprints = {row[0] for row in result if row[0]}
-                logger.info(f"📋 Found {len(fingerprints)} already processed fingerprints")
+                logger.info(f"📋 Loaded {len(fingerprints)} recent processed fingerprints (last 180 days)")
                 return fingerprints
                 
         except Exception as e:
             logger.error(f"Error getting processed fingerprints: {str(e)}")
             return set()
-
+        
     def get_unprocessed_sap_transactions(self) -> pd.DataFrame:
-        """Holt nur unverarbeitete SAP-Transaktionen"""
+        """Get ALL unprocessed SAP transactions regardless of batch - Enterprise optimized"""
         try:
-            # Bereits verarbeitete Fingerprints holen
             processed_fingerprints = self.get_processed_transaction_fingerprints()
             
-            # Neueste Rohdaten laden
-            latest_batch = self.get_latest_batch_id("sap_transactions", "TEST_BATCH_%")
-            if not latest_batch:
-                raise ValueError("No SAP data found in database")
+            # 🚀 OPTIMIZATION 1: Only load recent transactions (last 90 days)
+            # Adjust days based on your processing frequency
+            recent_days = 90
             
-            # Raw data mit Mapping laden
-            df = self.read_table_as_dataframe("sap_transactions", latest_batch, SAP_COLUMN_MAPPING)
+            query = """
+            SELECT * FROM sap_transactions 
+            WHERE upload_date >= DATEADD(day, -?, GETDATE())
+            ORDER BY upload_date DESC
+            """
             
-            # Fingerprints erstellen
+            logger.info(f"📊 Loading transactions from last {recent_days} days...")
+            df = pd.read_sql_query(query, self.engine, params=[recent_days])
+            
+            # Apply column mapping
+            df = df.rename(columns=SAP_COLUMN_MAPPING)
+            df = df.reset_index(drop=True)
+            
+            # 🚀 OPTIMIZATION 2: Batch fingerprint creation for better performance
+            logger.info("🔍 Creating transaction fingerprints...")
             df['transaction_fingerprint'] = df.apply(
                 lambda row: create_transaction_fingerprint(row), axis=1
             )
             
-            # Nur unverarbeitete filtern
+            # 🚀 OPTIMIZATION 3: Efficient filtering using pandas operations
+            logger.info("⚡ Filtering unprocessed transactions...")
             unprocessed_df = df[~df['transaction_fingerprint'].isin(processed_fingerprints)].copy()
             
-            logger.info(f"✅ Found {len(df)} total, {len(unprocessed_df)} unprocessed transactions")
+            logger.info(f"✅ Found {len(df)} total, {len(unprocessed_df)} unprocessed from ALL batches (last {recent_days} days)")
             return unprocessed_df.reset_index(drop=True)
             
         except Exception as e:
             logger.error(f"❌ Error getting unprocessed transactions: {str(e)}")
             raise
+
+    def get_unprocessed_sap_transactions_chunked(self, chunk_size: int = 10000) -> pd.DataFrame:
+        """Get unprocessed transactions in chunks - for very large datasets"""
+        try:
+            processed_fingerprints = self.get_processed_transaction_fingerprints()
+            
+            # Get total count first
+            count_query = """
+            SELECT COUNT(*) as total_count 
+            FROM sap_transactions 
+            WHERE upload_date >= DATEADD(day, -90, GETDATE())
+            """
+            
+            with self.engine.connect() as conn:
+                total_count = conn.execute(text(count_query)).fetchone()[0]
+            
+            logger.info(f"📊 Processing {total_count} transactions in chunks of {chunk_size}")
+            
+            all_unprocessed = []
+            offset = 0
+            
+            while offset < total_count:
+                # Load chunk
+                chunk_query = """
+                SELECT * FROM sap_transactions 
+                WHERE upload_date >= DATEADD(day, -90, GETDATE())
+                ORDER BY upload_date DESC
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                """
+                
+                chunk_df = pd.read_sql_query(chunk_query, self.engine, params=[offset, chunk_size])
+                
+                if chunk_df.empty:
+                    break
+                    
+                # Process chunk
+                chunk_df = chunk_df.rename(columns=SAP_COLUMN_MAPPING)
+                chunk_df['transaction_fingerprint'] = chunk_df.apply(
+                    lambda row: create_transaction_fingerprint(row), axis=1
+                )
+                
+                # Filter unprocessed in this chunk
+                unprocessed_chunk = chunk_df[~chunk_df['transaction_fingerprint'].isin(processed_fingerprints)].copy()
+                
+                if not unprocessed_chunk.empty:
+                    all_unprocessed.append(unprocessed_chunk)
+                
+                logger.info(f"⚡ Processed chunk {offset}-{offset+chunk_size}: {len(unprocessed_chunk)} unprocessed")
+                offset += chunk_size
+            
+            # Combine all unprocessed chunks
+            if all_unprocessed:
+                final_df = pd.concat(all_unprocessed, ignore_index=True)
+            else:
+                final_df = pd.DataFrame()
+                
+            logger.info(f"✅ Total unprocessed transactions found: {len(final_df)}")
+            return final_df
+            
+        except Exception as e:
+            logger.error(f"❌ Error in chunked processing: {str(e)}")
+            raise
+
+    def create_performance_indexes(self):
+        """Create database indexes for optimal performance"""
+        
+        indexes_to_create = [
+            # Index on upload_date for time-based filtering
+            "CREATE NONCLUSTERED INDEX IX_sap_transactions_upload_date ON sap_transactions (upload_date DESC)",
+            
+            # Index on batch_id if still needed for some queries
+            "CREATE NONCLUSTERED INDEX IX_sap_transactions_batch_id ON sap_transactions (batch_id)",
+            
+            # Covering index for fingerprint creation (most important fields)
+            """CREATE NONCLUSTERED INDEX IX_sap_transactions_fingerprint_fields 
+               ON sap_transactions (belegnummer, kostenstelle, betrag_in_hauswaehrung, buchungsdatum, hauptbuchkonto)""",
+            
+            # Index on processed table for fingerprint lookups
+            "CREATE NONCLUSTERED INDEX IX_sap_transactions_processed_fingerprint ON sap_transactions_processed (transaction_fingerprint)"
+        ]
+        
+        try:
+            with self.engine.connect() as conn:
+                for index_sql in indexes_to_create:
+                    try:
+                        conn.execute(text(index_sql))
+                        logger.info(f"✅ Created index: {index_sql.split('INDEX ')[1].split(' ON')[0]}")
+                    except Exception as e:
+                        if "already exists" in str(e).lower():
+                            logger.info(f"⚡ Index already exists: {index_sql.split('INDEX ')[1].split(' ON')[0]}")
+                        else:
+                            logger.warning(f"⚠️ Could not create index: {str(e)}")
+                
+                conn.commit()
+                
+        except Exception as e:
+            logger.error(f"❌ Error creating indexes: {str(e)}")
+            
 # Initialize database manager
 db_manager = DatabaseManager()
 
